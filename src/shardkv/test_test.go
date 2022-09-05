@@ -1,15 +1,18 @@
 package shardkv
 
-import "6.824/porcupine"
-import "6.824/models"
-import "testing"
-import "strconv"
-import "time"
-import "fmt"
-import "sync/atomic"
-import "sync"
-import "math/rand"
-import "io/ioutil"
+import (
+	"fmt"
+	"io/ioutil"
+	"math/rand"
+	"strconv"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"6.824/models"
+	"6.824/porcupine"
+)
 
 const linearizabilityCheckTimeout = 1 * time.Second
 
@@ -139,7 +142,6 @@ func TestJoinLeave(t *testing.T) {
 
 	cfg.checklogs()
 	cfg.ShutdownGroup(0)
-
 	for i := 0; i < n; i++ {
 		check(t, ck, ka[i], va[i])
 	}
@@ -402,7 +404,7 @@ func TestConcurrent2(t *testing.T) {
 		va[i] = randstring(1)
 		ck.Put(ka[i], va[i])
 	}
-
+	fmt.Printf("k:%v v:%v", ka, va)
 	var done int32
 	ch := make(chan bool)
 
@@ -901,7 +903,6 @@ func TestChallenge2Partial(t *testing.T) {
 
 	// JOIN 100 + 101 + 102
 	cfg.joinm([]int{0, 1, 2})
-
 	// Give the implementation some time to reconfigure
 	<-time.After(1 * time.Second)
 

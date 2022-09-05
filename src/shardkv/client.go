@@ -8,11 +8,15 @@ package shardkv
 // talks to the group that holds the key's shard.
 //
 
-import "6.824/labrpc"
-import "crypto/rand"
-import "math/big"
-import "6.824/shardctrler"
-import "time"
+import (
+	"crypto/rand"
+	"log"
+	"math/big"
+	"time"
+
+	"6.824/labrpc"
+	"6.824/shardctrler"
+)
 
 //
 // which shard is a key in?
@@ -40,6 +44,8 @@ type Clerk struct {
 	config   shardctrler.Config
 	make_end func(string) *labrpc.ClientEnd
 	// You will have to modify this struct.
+	clentStamp int64 //标记客户端序列号
+	opStamp    int64 //标记当前操作序列号
 }
 
 //
@@ -56,6 +62,11 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 	ck.sm = shardctrler.MakeClerk(ctrlers)
 	ck.make_end = make_end
 	// You'll have to add code here.
+
+	ck.clentStamp = nrand()     //随机生成当前client编号
+	ck.opStamp = 0              //操作编号初始化为
+	ck.config = ck.sm.Query(-1) //查询此时的最新配置
+	log.Printf("client:%v seart", ck.clentStamp)
 	return ck
 }
 
@@ -68,10 +79,11 @@ func MakeClerk(ctrlers []*labrpc.ClientEnd, make_end func(string) *labrpc.Client
 func (ck *Clerk) Get(key string) string {
 	args := GetArgs{}
 	args.Key = key
-
+	args.ClientStamp = ck.clentStamp
+	args.OpStamp = ck.opStamp
 	for {
-		shard := key2shard(key)
-		gid := ck.config.Shards[shard]
+		shardId := key2shard(key)
+		gid := ck.config.Shards[shardId]
 		if servers, ok := ck.config.Groups[gid]; ok {
 			// try each server for the shard.
 			for si := 0; si < len(servers); si++ {
@@ -79,6 +91,7 @@ func (ck *Clerk) Get(key string) string {
 				var reply GetReply
 				ok := srv.Call("ShardKV.Get", &args, &reply)
 				if ok && (reply.Err == OK || reply.Err == ErrNoKey) {
+					ck.opStamp++
 					return reply.Value
 				}
 				if ok && (reply.Err == ErrWrongGroup) {
@@ -90,9 +103,8 @@ func (ck *Clerk) Get(key string) string {
 		time.Sleep(100 * time.Millisecond)
 		// ask controler for the latest configuration.
 		ck.config = ck.sm.Query(-1)
+		log.Printf("reload config:%v", ck.config)
 	}
-
-	return ""
 }
 
 //
@@ -104,8 +116,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.Key = key
 	args.Value = value
 	args.Op = op
-
-
+	//记录client编号 + operation编号
+	args.ClientStamp = ck.clentStamp
+	args.OpStamp = ck.opStamp
 	for {
 		shard := key2shard(key)
 		gid := ck.config.Shards[shard]
@@ -115,6 +128,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 				var reply PutAppendReply
 				ok := srv.Call("ShardKV.PutAppend", &args, &reply)
 				if ok && reply.Err == OK {
+					ck.opStamp++
+					if args.Key == "0" {
+						log.Printf("client send append{clientStamp:%v, opStamp:%v, key:%v,value:%v}", args.ClientStamp, args.OpStamp, args.Key, args.Value)
+					}
 					return
 				}
 				if ok && reply.Err == ErrWrongGroup {

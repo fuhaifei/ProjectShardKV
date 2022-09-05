@@ -8,20 +8,24 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
-import "6.824/labrpc"
-import "bytes"
-import "log"
-import "sync"
-import "sync/atomic"
-import "testing"
-import "runtime"
-import "math/rand"
-import crand "crypto/rand"
-import "math/big"
-import "encoding/base64"
-import "time"
-import "fmt"
+import (
+	"bytes"
+	"log"
+	"math/rand"
+	"runtime"
+	"sync"
+	"sync/atomic"
+	"testing"
+
+	"6.824/labgob"
+	"6.824/labrpc"
+
+	crand "crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"math/big"
+	"time"
+)
 
 func randstring(n int) string {
 	b := make([]byte, 2*n)
@@ -218,6 +222,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 	}
 
 	for m := range applyCh {
+		//fmt.Printf("读取peer:%v的applyCh %v\n", i, m)
 		err_msg := ""
 		if m.SnapshotValid {
 			if rf.CondInstallSnapshot(m.SnapshotTerm, m.SnapshotIndex, m.Snapshot) {
@@ -240,11 +245,14 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 				}
 			}
 
+			//fmt.Printf("%v 的获取锁 %v\n", i, m)
 			cfg.mu.Lock()
 			cfg.lastApplied[i] = m.CommandIndex
 			cfg.mu.Unlock()
 
+			//fmt.Printf("等待到snapshotp判断:%v的applyCh %v\n", i, m)
 			if (m.CommandIndex+1)%SnapShotInterval == 0 {
+				//fmt.Printf("进入到snapshotp判断:%v的applyCh %v\n", i, m)
 				w := new(bytes.Buffer)
 				e := labgob.NewEncoder(w)
 				e.Encode(m.CommandIndex)
@@ -253,6 +261,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 					xlog = append(xlog, cfg.logs[i][j])
 				}
 				e.Encode(xlog)
+				//fmt.Printf("准备调用snapshot:%v的applyCh %v\n", i, m)
 				rf.Snapshot(m.CommandIndex, w.Bytes())
 			}
 		} else {
@@ -264,6 +273,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 			// keep reading after error so that Raft doesn't block
 			// holding locks...
 		}
+		//fmt.Printf("读取完毕peer:%v的applyCh %v\n", i, m)
 	}
 }
 
@@ -504,7 +514,7 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
 		cfg.mu.Unlock()
-
+		//log.Printf("nCommitted %v %v", cmd1, ok)
 		if ok {
 			if count > 0 && cmd != cmd1 {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v",
@@ -576,6 +586,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			cfg.mu.Unlock()
 			if rf != nil {
 				index1, _, ok := rf.Start(cmd)
+				//log.Printf("index:%d, cmd:%v, peer:%v, ok:%v", index1, cmd, starts, ok)
 				if ok {
 					index = index1
 					break
@@ -589,6 +600,8 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
+
+				//log.Printf("%d expectedServers:%v, %v %v", nd, expectedServers, cmd1, cmd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {

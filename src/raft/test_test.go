@@ -8,12 +8,15 @@ package raft
 // test with the original before submitting.
 //
 
-import "testing"
-import "fmt"
-import "time"
-import "math/rand"
-import "sync/atomic"
-import "sync"
+import (
+	"fmt"
+	"log"
+	"math/rand"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
 
 // The tester generously allows solutions to complete elections in one second
 // (much more than the paper's range of timeouts).
@@ -376,6 +379,7 @@ loop:
 
 		leader := cfg.checkOneLeader()
 		_, term, ok := cfg.rafts[leader].Start(1)
+		log.Printf("---------------term:%v, leaderid:%v", term, leader)
 		if !ok {
 			// leader moved on really quickly
 			continue
@@ -405,6 +409,7 @@ loop:
 		for j := 0; j < servers; j++ {
 			if t, _ := cfg.rafts[j].GetState(); t != term {
 				// term changed -- can't expect low RPC counts
+				log.Printf("---------------term changed(%v -> %v),restart loop, cur try num %v", t, term, try)
 				continue loop
 			}
 		}
@@ -418,6 +423,7 @@ loop:
 					// peers have moved on to later terms
 					// so we can't expect all Start()s to
 					// have succeeded
+					log.Printf("----------peers has move on to later terms %v", try)
 					failed = true
 					break
 				}
@@ -457,6 +463,7 @@ loop:
 		t.Fatalf("term changed too often")
 	}
 
+	log.Printf("---------------success")
 	cfg.end()
 }
 
@@ -502,11 +509,9 @@ func TestBackup2B(t *testing.T) {
 	servers := 5
 	cfg := make_config(t, servers, false, false)
 	defer cfg.cleanup()
-
 	cfg.begin("Test (2B): leader backs up quickly over incorrect follower logs")
 
 	cfg.one(rand.Int(), servers, true)
-
 	// put leader and one follower in a partition
 	leader1 := cfg.checkOneLeader()
 	cfg.disconnect((leader1 + 2) % servers)
@@ -516,23 +521,21 @@ func TestBackup2B(t *testing.T) {
 	// submit lots of commands that won't commit
 	for i := 0; i < 50; i++ {
 		cfg.rafts[leader1].Start(rand.Int())
+		//cfg.rafts[leader1].Start(i)
 	}
 
 	time.Sleep(RaftElectionTimeout / 2)
 
 	cfg.disconnect((leader1 + 0) % servers)
 	cfg.disconnect((leader1 + 1) % servers)
-
 	// allow other partition to recover
 	cfg.connect((leader1 + 2) % servers)
 	cfg.connect((leader1 + 3) % servers)
 	cfg.connect((leader1 + 4) % servers)
-
 	// lots of successful commands to new group.
 	for i := 0; i < 50; i++ {
 		cfg.one(rand.Int(), 3, true)
 	}
-
 	// now another partitioned leader and one follower
 	leader2 := cfg.checkOneLeader()
 	other := (leader1 + 2) % servers
@@ -543,7 +546,8 @@ func TestBackup2B(t *testing.T) {
 
 	// lots more commands that won't commit
 	for i := 0; i < 50; i++ {
-		cfg.rafts[leader2].Start(rand.Int())
+		//cfg.rafts[leader2].Start(rand.Int())
+		cfg.rafts[leader2].Start(i)
 	}
 
 	time.Sleep(RaftElectionTimeout / 2)
@@ -778,12 +782,11 @@ func TestPersist32C(t *testing.T) {
 	defer cfg.cleanup()
 
 	cfg.begin("Test (2C): partitioned leader and one follower crash, leader restarts")
-
 	cfg.one(101, 3, true)
 
 	leader := cfg.checkOneLeader()
-	cfg.disconnect((leader + 2) % servers)
 
+	cfg.disconnect((leader + 2) % servers)
 	cfg.one(102, 2, true)
 
 	cfg.crash1((leader + 0) % servers)
@@ -1108,7 +1111,7 @@ func TestUnreliableChurn2C(t *testing.T) {
 const MAXLOGSIZE = 2000
 
 func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash bool) {
-	iters := 30
+	iters := 1
 	servers := 3
 	cfg := make_config(t, servers, !reliable, true)
 	defer cfg.cleanup()
@@ -1137,6 +1140,7 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 
 		// perhaps send enough to get a snapshot
 		nn := (SnapShotInterval / 2) + (rand.Int() % SnapShotInterval)
+
 		for i := 0; i < nn; i++ {
 			cfg.rafts[sender].Start(rand.Int())
 		}
